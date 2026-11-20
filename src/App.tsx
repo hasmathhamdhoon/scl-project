@@ -6,7 +6,8 @@ import {
   MoreHorizontal, Plus, QrCode, Search, ShieldCheck, SlidersHorizontal,
   Sparkles, Users, X,
 } from 'lucide-react'
-import { classList, demoAccounts, staff as initialStaff, students as initialStudents, type Role, type Staff, type Student } from './data'
+import { classList, staff as initialStaff, students as initialStudents, type Role, type Staff, type Student } from './data'
+import { getCurrentUser, signIn, signOut, type AuthUser } from './api'
 
 type Page = 'Overview' | 'Students' | 'Staff' | 'Attendance' | 'Gate pass' | 'Academics' | 'Clubs & sports' | 'Settings'
 type GateEvent = { name: string; id: string; action: 'Entry' | 'Exit'; time: string; type: 'Student' | 'Staff' }
@@ -50,27 +51,19 @@ function Logo() {
   return <div className="brand-mark"><span className="brand-leaf">✳</span></div>
 }
 
-function Login({ onLogin }: { onLogin: (email: string, password: string) => string | null }) {
-  const [email, setEmail] = useState('principal@greenfield.edu')
+function Login({ onLogin, serviceError }: { onLogin: (username: string, password: string) => Promise<string | null>; serviceError: string }) {
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  const [remaining, setRemaining] = useState(() => {
-    const until = Number(localStorage.getItem('greenfield-lock-until') || 0)
-    return Math.max(0, Math.ceil((until - Date.now()) / 1000))
-  })
+  const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => {
-    if (remaining <= 0) return
-    const timer = window.setTimeout(() => setRemaining((value) => Math.max(0, value - 1)), 1000)
-    return () => window.clearTimeout(timer)
-  }, [remaining])
-
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (remaining > 0) return
-    const message = onLogin(email.trim().toLowerCase(), password)
+    setSubmitting(true)
+    setError('')
+    const message = await onLogin(username.trim(), password)
     setError(message || '')
-    if (message === 'locked') setRemaining(30)
+    setSubmitting(false)
   }
 
   return (
@@ -95,15 +88,15 @@ function Login({ onLogin }: { onLogin: (email: string, password: string) => stri
           <h2>Sign in to your<br />school portal.</h2>
           <p className="login-subtitle">Your school day, all in one place.</p>
           <form onSubmit={submit} className="login-form">
-            <label htmlFor="email">Email address</label>
-            <input id="email" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@greenfield.edu" required />
-            <div className="label-row"><label htmlFor="password">Password</label><a href="#help" onClick={(event) => event.preventDefault()}>Forgot password?</a></div>
+            <label htmlFor="username">Username</label>
+            <input id="username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Your school username" required />
+            <label htmlFor="password">Password</label>
             <input id="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your password" required />
-            {error && error !== 'locked' && <p className="login-error">{error}</p>}
-            {remaining > 0 && <p className="login-error">Too many attempts. Try again in {remaining}s.</p>}
-            <button className="button button-dark login-button" type="submit" disabled={remaining > 0}>Sign in <ArrowRight size={17} /></button>
+            {error && <p className="login-error">{error}</p>}
+            {serviceError && <p className="login-error">{serviceError}</p>}
+            <button className="button button-dark login-button" type="submit" disabled={submitting}>{submitting ? 'Signing in…' : 'Sign in'} <ArrowRight size={17} /></button>
           </form>
-          <div className="login-demo"><div className="demo-icon"><ShieldCheck size={17} /></div><div><b>Exploring the portal?</b><span>Use any role's email and password <code>Greenfield123!</code></span></div></div>
+          <div className="login-demo"><div className="demo-icon"><ShieldCheck size={17} /></div><div><b>Need an account?</b><span>Contact your school administrator to get login details.</span></div></div>
           <div className="login-foot">Need a hand? <a href="#support" onClick={(event) => event.preventDefault()}>Contact school office</a><span>© 2025 Greenfield Academy</span></div>
         </div>
       </section>
@@ -112,9 +105,9 @@ function Login({ onLogin }: { onLogin: (email: string, password: string) => stri
 }
 
 function App() {
-  const [session, setSession] = useState<{ email: string; role: Role; name: string } | null>(() => {
-    try { return JSON.parse(localStorage.getItem('greenfield-session') || 'null') as { email: string; role: Role; name: string } | null } catch { return null }
-  })
+  const [session, setSession] = useState<AuthUser | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [authError, setAuthError] = useState('')
   const [page, setPage] = useState<Page>('Overview')
   const [roleMenu, setRoleMenu] = useState(false)
   const [mobileNav, setMobileNav] = useState(false)
@@ -131,41 +124,41 @@ function App() {
   const [scanMessage, setScanMessage] = useState('')
   const [filterClass, setFilterClass] = useState('All classes')
 
+  useEffect(() => {
+    let active = true
+    getCurrentUser()
+      .then((user) => { if (active) setSession(user) })
+      .catch((error: unknown) => {
+        if (active) setAuthError(error instanceof Error ? `Could not connect to the school service: ${error.message}` : 'Could not connect to the school service.')
+      })
+      .finally(() => { if (active) setAuthLoading(false) })
+    return () => { active = false }
+  }, [])
+
   function showToast(message: string) {
     setToast(message)
     window.setTimeout(() => setToast(''), 2600)
   }
 
-  function login(email: string, password: string) {
-    const until = Number(localStorage.getItem('greenfield-lock-until') || 0)
-    if (until > Date.now()) return 'locked'
-    const account = demoAccounts[email]
-    if (!account || account.password !== password) {
-      const attempts = Number(localStorage.getItem('greenfield-attempts') || 0) + 1
-      localStorage.setItem('greenfield-attempts', String(attempts))
-      if (attempts >= 3) {
-        localStorage.setItem('greenfield-lock-until', String(Date.now() + 30_000))
-        localStorage.setItem('greenfield-attempts', '0')
-        return 'locked'
-      }
-      return `That email and password don't match. ${3 - attempts} ${3 - attempts === 1 ? 'attempt' : 'attempts'} remaining.`
+  async function login(username: string, password: string): Promise<string | null> {
+    try {
+      setSession(await signIn(username, password))
+      setAuthError('')
+      return null
+    } catch (error) {
+      return error instanceof Error ? error.message : 'Sign-in failed. Please try again.'
     }
-    localStorage.removeItem('greenfield-attempts')
-    localStorage.removeItem('greenfield-lock-until')
-    const nextSession = { email, role: account.role, name: account.name }
-    localStorage.setItem('greenfield-session', JSON.stringify(nextSession))
-    setSession(nextSession)
-    return null
   }
 
-  function changeRole(role: Role) {
-    if (!session) return
-    const next = { ...session, role }
-    setSession(next)
-    localStorage.setItem('greenfield-session', JSON.stringify(next))
-    const nextPage = navigation.find((item) => item.name === page && item.roles.includes(role))?.name ?? 'Overview'
-    setPage(nextPage)
-    setRoleMenu(false)
+  async function logout() {
+    try {
+      await signOut()
+      setSession(null)
+      setPage('Overview')
+      setRoleMenu(false)
+    } catch (error) {
+      showToast(error instanceof Error ? `Could not sign out: ${error.message}` : 'Could not sign out. Please try again.')
+    }
   }
 
   const canManageStudents = session?.role === 'Principal' || session?.role === 'Office Staff'
@@ -178,7 +171,8 @@ function App() {
     return matchesQuery && (filterClass === 'All classes' || student.className === filterClass)
   }), [students, search, filterClass])
 
-  if (!session) return <Login onLogin={login} />
+  if (authLoading) return <main className="login-shell"><section className="login-panel"><div className="login-form-wrap"><p>Connecting to the school service…</p></div></section></main>
+  if (!session) return <Login onLogin={login} serviceError={authError} />
 
   const pageTitles: Record<Page, string> = {
     Overview: 'A lovely day to learn.', Students: 'Our students', Staff: 'The people behind it all',
@@ -258,8 +252,8 @@ function App() {
         <div className="sidebar-spacer" />
         <div className="sidebar-help"><div className="help-mark"><CircleHelp size={18} /></div><div><b>Need a hand?</b><span>We're happy to help.</span><button onClick={() => showToast('The school office is ready to help you.')}>Get support <ArrowRight size={13} /></button></div></div>
         <button className="profile-switch" onClick={() => setRoleMenu((open) => !open)}>
-          <Avatar initials={session.name.split(' ').map((part) => part[0]).join('').slice(0, 2)} color="peach" />
-          <span className="profile-copy"><b>{session.name}</b><span>{session.role}</span></span><MoreHorizontal size={19} />
+          <Avatar initials={session.username.split(' ').map((part) => part[0]).join('').slice(0, 2)} color="peach" />
+          <span className="profile-copy"><b>{session.username}</b><span>{session.role}</span></span><MoreHorizontal size={19} />
         </button>
       </aside>
       {mobileNav && <button className="nav-scrim" onClick={() => setMobileNav(false)} aria-label="Close navigation" />}
@@ -272,13 +266,14 @@ function App() {
             <label className="global-search"><Search size={16} /><input value={search} onChange={(event) => { setSearch(event.target.value); if (event.target.value) setPage('Students') }} placeholder="Find a student by name or ID..." /><kbd>⌘ K</kbd></label>
             <button className="icon-button notification-button" aria-label="Notifications" onClick={() => showToast('You’re all caught up!')}><Bell size={18} /><i /></button>
             <div className="role-picker-wrap">
-              <button className="role-picker" onClick={() => setRoleMenu((open) => !open)}><Avatar initials={session.name.split(' ').map((part) => part[0]).join('').slice(0, 2)} color="peach" /><span>{session.role}</span><ChevronDown size={14} /></button>
-              {roleMenu && <div className="role-menu"><span className="role-menu-label">PREVIEW AS</span>{roleOptions.map((role) => <button key={role} onClick={() => changeRole(role)} className={session.role === role ? 'role-selected' : ''}>{role}{session.role === role && <Check size={14} />}</button>)}<div className="role-menu-divider" /><button onClick={() => { setSession(null); localStorage.removeItem('greenfield-session'); setRoleMenu(false) }}><LogOut size={14} /> Sign out</button></div>}
+              <button className="role-picker" onClick={() => setRoleMenu((open) => !open)}><Avatar initials={session.username.split(' ').map((part) => part[0]).join('').slice(0, 2)} color="peach" /><span>{session.role}</span><ChevronDown size={14} /></button>
+              {roleMenu && <div className="role-menu"><span className="role-menu-label">{session.username}</span><div className="role-menu-divider" /><button onClick={logout}><LogOut size={14} /> Sign out</button></div>}
             </div>
           </div>
         </header>
         <div className="content-area">
-          <div className="page-intro"><div><div className="date-line"><span className="date-dot" />{dateLabel} <span>·</span> Term 2, Week 8</div><h1>{pageTitles[page]}</h1><p>{page === 'Overview' ? `Good morning, ${session.name.split(' ')[0]}. Here's what's happening across campus.` : `A little look at ${page.toLowerCase()} across our school community.`}</p></div><div className="intro-actions"><button className="button button-light" onClick={() => showToast('Your report is being prepared.')}><Download size={16} /> Export report</button>{(page === 'Students' && canManageStudents) && <button className="button button-dark" onClick={() => setModal('student')}><Plus size={16} /> Add student</button>}{(page === 'Staff' && canManageStaff) && <button className="button button-dark" onClick={() => setModal('staff')}><Plus size={16} /> Add staff</button>}</div></div>
+          <div className="prototype-notice" role="status">Prototype data only. Student records and portal actions are not connected to the database yet.</div>
+          <div className="page-intro"><div><div className="date-line"><span className="date-dot" />{dateLabel} <span>·</span> Term 2, Week 8</div><h1>{pageTitles[page]}</h1><p>{page === 'Overview' ? `Good morning, ${session.username.split('@')[0]}. Here's what's happening across campus.` : `A little look at ${page.toLowerCase()} across our school community.`}</p></div><div className="intro-actions"><button className="button button-light" onClick={() => showToast('Your report is being prepared.')}><Download size={16} /> Export report</button>{(page === 'Students' && canManageStudents) && <button className="button button-dark" onClick={() => setModal('student')}><Plus size={16} /> Add student</button>}{(page === 'Staff' && canManageStaff) && <button className="button button-dark" onClick={() => setModal('staff')}><Plus size={16} /> Add staff</button>}</div></div>
 
           {page === 'Overview' && <Overview role={session.role} students={students} passes={passes} setPage={setPage} onScan={() => { setModal('scan'); setScanMessage('') }} showToast={showToast} />}
           {page === 'Students' && <StudentsPage students={filteredStudents} allCount={students.length} search={search} setSearch={setSearch} filterClass={filterClass} setFilterClass={setFilterClass} canManage={canManageStudents} onSelect={setSelectedStudent} onAdd={() => setModal('student')} />}

@@ -36,16 +36,6 @@ export type Staff = {
   color: string
 }
 
-export const demoAccounts: Record<string, { password: string; role: Role; name: string }> = {
-  'principal@greenfield.edu': { password: 'Greenfield123!', role: 'Principal', name: 'Dr. Amara Perera' },
-  'office@greenfield.edu': { password: 'Greenfield123!', role: 'Office Staff', name: 'Nadeesha Silva' },
-  'academic@greenfield.edu': { password: 'Greenfield123!', role: 'Academic Staff', name: 'Ruwan Jayasinghe' },
-  'teacher@greenfield.edu': { password: 'Greenfield123!', role: 'Teacher', name: 'Maya Fernando' },
-  'security@greenfield.edu': { password: 'Greenfield123!', role: 'Security', name: 'Kasun Wijesinghe' },
-  'parent@greenfield.edu': { password: 'Greenfield123!', role: 'Parent', name: 'Anjali Perera' },
-  'student@greenfield.edu': { password: 'Greenfield123!', role: 'Student', name: 'Amaya Perera' },
-}
-
 const colors = ['lavender', 'mint', 'peach', 'blue', 'rose']
 
 export const students: Student[] = [
