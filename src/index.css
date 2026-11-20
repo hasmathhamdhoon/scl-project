@@ -191,6 +191,7 @@ kbd { flex: 0 0 auto; padding: 2px 4px; border: 1px solid #e6e9e5; border-radius
 .note-spark { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border-radius: 10px; color: #b28a52; background: #f4efe2; font-size: 20px; }
 .side-note b { color: #655e4e; font-size: 9px; }.side-note p { margin: 3px 0; color: #858071; font: italic 10px Georgia, serif; }.side-note span { color: #aaa18e; font-size: 7px; font-weight: 700; letter-spacing: .1em; }
 .page-footer { display: flex; align-items: center; justify-content: space-between; padding: 20px 2px 3px; color: #a2a9a3; font-size: 8px; }
+.prototype-notice { margin-bottom: 18px; padding: 11px 14px; border: 1px solid #f0dfb8; border-radius: 8px; color: #7a6230; background: #fffaf0; font-size: 11px; }
 .footer-heart { color: #d08b75; }.page-footer > span:last-child { font-size: 7px; letter-spacing: .13em; }.page-footer i { padding: 0 4px; color: #c2c7c2; font-style: normal; }
 
 .full-card { padding: 18px 18px 0; }
